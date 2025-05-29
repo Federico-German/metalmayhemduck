@@ -1,10 +1,64 @@
-
 "use client";
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, Suspense } from 'react';
 import * as Tone from 'tone';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { Canvas, useLoader } from '@react-three/fiber';
+import { OrbitControls, Environment } from '@react-three/drei';
+import * as THREE from 'three';
+import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+
+const DuckModel = ({ onClick, isPlaying }: { onClick: () => void, isPlaying: boolean }) => {
+  const group = useRef<THREE.Group>(null);
+
+  const materials = useLoader(MTLLoader, '/assets/models/RubberDuck_LOD0.mtl');
+  const obj = useLoader(OBJLoader, '/assets/models/RubberDuck_LOD0.obj', (loader) => {
+    materials.preload();
+    loader.setMaterials(materials);
+  });
+
+  useEffect(() => {
+    if (obj && group.current) {
+      group.current.rotation.y = Math.PI; 
+      console.log("OBJ loaded with MTL materials. BaseColor texture should be applied if found by MTLLoader.");
+      console.log("Loaded object structure:", obj);
+      console.log("MTL MaterialCreator:", materials);
+    }
+  }, [obj, materials]);
+
+  useEffect(() => {
+    if (group.current && obj) {
+      if (isPlaying) {
+        group.current.rotation.x = Math.PI * 0.1;
+        setTimeout(() => {
+          if (group.current) {
+            group.current.rotation.x = 0;
+          }
+        }, 200);
+      } else {
+        if (group.current) group.current.rotation.x = 0;
+      }
+    }
+  }, [isPlaying, obj]);
+
+  if (!obj) {
+    return <mesh><boxGeometry args={[0.1,0.1,0.1]}/><meshBasicMaterial color="red" wireframe/></mesh>;
+  }
+
+  return (
+    obj ? (
+      <group ref={group} onClick={onClick}>
+        <primitive 
+          object={obj} 
+          scale={0.1}
+          position={[0, -0.5, 0]}
+        />
+      </group>
+    ) : null
+  );
+};
 
 const MetalDuckScene: React.FC = () => {
   const cuackSoundRef = useRef<Tone.Synth | null>(null);
@@ -15,7 +69,6 @@ const MetalDuckScene: React.FC = () => {
   
   const { toast } = useToast();
 
-  // Initialize Tone.js and synths
   useEffect(() => {
     console.log("Attempting to initialize Tone.js synths...");
     try {
@@ -48,7 +101,7 @@ const MetalDuckScene: React.FC = () => {
       guitarSoundRef.current?.dispose();
       console.log("Tone.js synths disposed.");
     };
-  }, [toast]); // Added toast to dependency array as it's used in the effect's error handling
+  }, [toast]);
 
   const onDuckClick = useCallback(async () => {
     if (Tone.context.state !== 'running') {
@@ -70,7 +123,7 @@ const MetalDuckScene: React.FC = () => {
     }
     if (guitarSoundRef.current) {
       const now = Tone.now();
-      guitarSoundRef.current.triggerAttackRelease("E2", "8n", now); // Changed to a lower note for a more 'metal' feel
+      guitarSoundRef.current.triggerAttackRelease("E2", "8n", now);
       guitarSoundRef.current.triggerAttackRelease("A2", "8n", now + 0.25);
       guitarSoundRef.current.triggerAttackRelease("D3", "8n", now + 0.5);
     } else {
@@ -81,43 +134,24 @@ const MetalDuckScene: React.FC = () => {
     setIsGuitarPlayingAnim(true);
     setTimeout(() => setIsGuitarPlayingAnim(false), 500); 
 
-    setClickCount(prevCount => {
-      const newCount = prevCount + 1;
-      // console.log(`Duck clicked ${newCount} times`); // Logging can be verbose, optionally remove
-      return newCount;
-    });
+    setClickCount(prevCount => prevCount + 1);
   }, [toast]);
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center relative select-none p-4">
-      {/* CSS Duck */}
-      <div 
-        className={`relative cursor-pointer transition-transform duration-100 ease-in-out active:scale-95 ${isGuitarPlayingAnim ? 'animate-guitar-play' : ''}`}
-        onClick={onDuckClick}
-        aria-label="Metalhead CSS Duck"
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onDuckClick()}
-      >
-        {/* Duck Body */}
-        <div className="w-48 h-36 bg-primary rounded-t-full rounded-b-lg shadow-lg relative">
-          {/* Duck Head */}
-          <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-28 h-28 bg-primary rounded-full border-2 border-primary-foreground/20">
-             {/* Metal Head Piece (Hair/Helmet) */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-12 bg-muted rounded-t-xl border-2 border-foreground/30 shadow-inner"></div>
-            {/* Eye (simple version) */}
-            <div className="absolute top-1/2 -translate-y-1/2 right-5 w-4 h-4 bg-foreground rounded-full"></div>
-          </div>
-           {/* Beak */}
-          <div className="absolute top-3/4 left-full -translate-y-full -ml-1 w-10 h-6 bg-accent rounded-md transform -skew-y-6 shadow-sm border-2 border-accent-foreground/20"></div>
-        
-          {/* Simple Wings (relative to body) */}
-          <div className="absolute top-1/4 -left-4 w-10 h-16 bg-primary rounded-l-full transform -rotate-12 origin-bottom-right border-2 border-primary-foreground/10"></div>
-          <div className="absolute top-1/4 -right-4 w-10 h-16 bg-primary rounded-r-full transform rotate-12 origin-bottom-left border-2 border-primary-foreground/10"></div>
-        </div>
+      <div className="w-full h-full">
+        <Canvas camera={{ position: [0, 1, 10], fov: 50 }}>
+          <Suspense fallback={null}>
+            <ambientLight intensity={0.8} />
+            <directionalLight position={[10, 10, 5]} intensity={1.0} />
+            <pointLight position={[-10, -10, -10]} intensity={0.5} />
+            <DuckModel onClick={onDuckClick} isPlaying={isGuitarPlayingAnim} />
+            <Environment preset="city" />
+            <OrbitControls enableZoom={true} />
+          </Suspense>
+        </Canvas>
       </div>
 
-      {/* Click Counter Display */}
       <div className="absolute bottom-4 right-4">
         <Button variant="outline" className="bg-background/80 backdrop-blur-sm text-sm">
           Shred Count: {clickCount}
