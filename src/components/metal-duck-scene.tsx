@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
@@ -26,6 +27,7 @@ const MetalDuckScene: React.FC = () => {
   
   const [clickCount, setClickCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState("Initializing scene...");
   const [isAnimatingGuitar, setIsAnimatingGuitar] = useState(false);
   const animationClock = useRef(new THREE.Clock());
 
@@ -33,30 +35,63 @@ const MetalDuckScene: React.FC = () => {
 
   // Initialize Tone.js and audio players
   useEffect(() => {
-    cuackSoundRef.current = new Tone.Player("/assets/sounds/cuack.mp3").toDestination();
-    guitarSoundRef.current = new Tone.Player("/assets/sounds/guitar_riff.mp3").toDestination();
-    // It's good practice to load sounds before playing
-    Promise.all([cuackSoundRef.current.load("/assets/sounds/cuack.mp3"), guitarSoundRef.current.load("/assets/sounds/guitar_riff.mp3")])
-      .catch(err => console.error("Error loading sounds:", err));
+    setLoadingMessage("Loading sounds...");
+    cuackSoundRef.current = new Tone.Player();
+    guitarSoundRef.current = new Tone.Player();
+
+    Promise.all([
+      cuackSoundRef.current.load("/assets/sounds/cuack.mp3")
+        .then(() => console.log("Cuack sound loaded successfully from /public/assets/sounds/cuack.mp3"))
+        .catch(err => console.error("Error loading cuack.mp3. Ensure /public/assets/sounds/cuack.mp3 exists.", err)),
+      guitarSoundRef.current.load("/assets/sounds/guitar_riff.mp3")
+        .then(() => console.log("Guitar riff sound loaded successfully from /public/assets/sounds/guitar_riff.mp3"))
+        .catch(err => console.error("Error loading guitar_riff.mp3. Ensure /public/assets/sounds/guitar_riff.mp3 exists.", err))
+    ])
+    .then(() => {
+      console.log("All sounds preloading attempted.");
+      cuackSoundRef.current?.toDestination();
+      guitarSoundRef.current?.toDestination();
+    })
+    .catch(err => console.error("Error during sound preloading setup:", err));
   }, []);
 
   const onDuckClick = useCallback(async () => {
-    if (isLoading || !duckModelRef.current) return;
+    if (isLoading || !duckModelRef.current || placeholderCubeRef.current) {
+      console.warn('Duck model not fully loaded or placeholder is active, click action aborted.');
+      return;
+    }
 
     // Start Tone.js audio context on first user interaction
     if (Tone.context.state !== 'running') {
-      await Tone.start();
+      try {
+        await Tone.start();
+        console.log("Tone.js audio context started.");
+      } catch (e) {
+        console.error("Error starting Tone.js audio context:", e);
+        return;
+      }
     }
 
     // Play sounds
-    cuackSoundRef.current?.stop().start();
-    guitarSoundRef.current?.stop().start();
+    if (cuackSoundRef.current?.loaded) {
+      cuackSoundRef.current?.stop().start();
+    } else {
+      console.warn("Cuack sound not loaded, cannot play.");
+    }
+    if (guitarSoundRef.current?.loaded) {
+      guitarSoundRef.current?.stop().start();
+    } else {
+      console.warn("Guitar sound not loaded, cannot play.");
+    }
+    
 
     // Trigger animation
     if (guitarAnimActionRef.current) {
+      console.log("Playing GLTF animation.");
       guitarAnimActionRef.current.reset().play();
     } else {
       // Fallback programmatic animation
+      console.log("Playing fallback programmatic animation.");
       setIsAnimatingGuitar(true);
       setTimeout(() => setIsAnimatingGuitar(false), 500); // Animate for 0.5 seconds
     }
@@ -72,15 +107,16 @@ const MetalDuckScene: React.FC = () => {
     if (!mountRef.current) return;
 
     const currentMount = mountRef.current;
+    setIsLoading(true);
+    setLoadingMessage("Initializing 3D scene...");
 
     // Scene
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    // scene.background = new THREE.Color(0xf5f5dc); // Set by globals.css on parent
 
     // Camera
     const camera = new THREE.PerspectiveCamera(50, currentMount.clientWidth / currentMount.clientHeight, 0.1, 1000);
-    camera.position.set(0, 1.5, 4); // Adjusted camera position
+    camera.position.set(0, 1.5, 4); 
     cameraRef.current = camera;
 
     // Renderer
@@ -92,34 +128,32 @@ const MetalDuckScene: React.FC = () => {
     rendererRef.current = renderer;
 
     // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.0); // Increased intensity
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
     scene.add(ambientLight);
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5); // Increased intensity
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
     directionalLight.position.set(5, 10, 7.5);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 1024;
     directionalLight.shadow.mapSize.height = 1024;
     scene.add(directionalLight);
 
-    // Optional: OrbitControls for development
-    // const controls = new OrbitControls(camera, renderer.domElement);
-    // controls.enableDamping = true;
-
     // Load 3D Model
+    setLoadingMessage("Loading 3D model (duck.glb)...");
     const loader = new GLTFLoader();
     const dracoLoader = new DRACOLoader();
-    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/'); // CDN for Draco decoder
+    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
     loader.setDRACOLoader(dracoLoader);
 
     loader.load(
-      '/assets/models/duck.glb', // Ensure this path is correct
+      '/assets/models/duck.glb', 
       (gltf) => {
+        console.log('Duck model GLTF loaded successfully:', gltf);
+        setLoadingMessage("Processing 3D model...");
         const model = gltf.scene;
         duckModelRef.current = model;
-        model.scale.set(1, 1, 1); // Adjust scale as needed
-        model.position.set(0, 0, 0); // Center the duck
+        model.scale.set(1, 1, 1); 
+        model.position.set(0, 0, 0); 
         
-        // Enable shadows for all meshes in the model
         model.traverse((child) => {
           if (child instanceof THREE.Mesh) {
             child.castShadow = true;
@@ -128,45 +162,56 @@ const MetalDuckScene: React.FC = () => {
         });
         
         scene.add(model);
-        camera.lookAt(model.position); // Ensure camera looks at the model
+        camera.lookAt(model.position);
 
-        // Setup animation
         if (gltf.animations && gltf.animations.length) {
           mixerRef.current = new THREE.AnimationMixer(model);
-          // Try to find an animation named 'guitar_play' or similar
           const clip = THREE.AnimationClip.findByName(gltf.animations, 'guitar_play') || 
-                       THREE.AnimationClip.findByName(gltf.animations, 'animation_0') || // Common default names
-                       gltf.animations[0]; // Fallback to the first animation
+                       THREE.AnimationClip.findByName(gltf.animations, 'animation_0') || 
+                       gltf.animations[0];
           if (clip) {
+            console.log(`Using animation clip: ${clip.name}`);
             guitarAnimActionRef.current = mixerRef.current.clipAction(clip);
             guitarAnimActionRef.current.setLoop(THREE.LoopOnce, 1);
             guitarAnimActionRef.current.clampWhenFinished = true;
           } else {
-            console.warn("No suitable 'guitar_play' animation found in model.");
+            console.warn("No suitable 'guitar_play' (or fallback) animation found in model. Click will use programmatic animation.");
           }
         } else {
-          console.warn("Model has no animations.");
+          console.warn("Model has no animations. Click will use programmatic animation.");
         }
-        setIsLoading(false);
+        
         if (placeholderCubeRef.current) {
             scene.remove(placeholderCubeRef.current);
             placeholderCubeRef.current.geometry.dispose();
             (placeholderCubeRef.current.material as THREE.Material).dispose();
             placeholderCubeRef.current = null;
+            console.log("Placeholder cube removed.");
+        }
+        setIsLoading(false);
+        setLoadingMessage(""); 
+      },
+      (xhr) => { // onProgress callback
+        const percentLoaded = (xhr.loaded / xhr.total) * 100;
+        // console.log(`Model loading progress: ${percentLoaded.toFixed(2)}%`);
+        if (percentLoaded < 100) {
+          setLoadingMessage(`Loading 3D model: ${percentLoaded.toFixed(0)}%`);
+        } else {
+          setLoadingMessage("Processing 3D model...");
         }
       },
-      undefined, // onProgress callback (optional)
       (error) => {
-        console.error('Error loading duck model:', error);
-        setIsLoading(false);
+        console.error('Error loading duck model. Please ensure /public/assets/models/duck.glb exists and is a valid GLB file. Check browser console for more details.', error);
+        setLoadingMessage("Error loading model. Showing placeholder.");
         // Add a placeholder cube if model fails to load
         const geometry = new THREE.BoxGeometry(1, 1, 1);
-        const material = new THREE.MeshStandardMaterial({ color: 0xffcc00 });
+        const material = new THREE.MeshStandardMaterial({ color: 0xffcc00 }); // Yellow cube
         const cube = new THREE.Mesh(geometry, material);
         cube.position.set(0,0.5,0);
         scene.add(cube);
         placeholderCubeRef.current = cube;
         camera.lookAt(cube.position);
+        setIsLoading(false); // Still set loading to false to remove general loading message
       }
     );
 
@@ -175,11 +220,20 @@ const MetalDuckScene: React.FC = () => {
     const mouse = new THREE.Vector2();
 
     const handleCanvasClick = (event: MouseEvent) => {
-      if (!currentMount || !duckModelRef.current) return;
+      if (!currentMount || !cameraRef.current || !sceneRef.current || isLoading) return;
+
+      // Only proceed if the actual duck model is loaded, not the placeholder
+      if (!duckModelRef.current || placeholderCubeRef.current) {
+        console.log("Actual duck model not loaded or placeholder is active, click on canvas ignored for duck interaction.");
+        return;
+      }
+
       const rect = currentMount.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(mouse, camera);
+      raycaster.setFromCamera(mouse, cameraRef.current);
+      
+      // Check intersection with the actual duck model
       const intersects = raycaster.intersectObject(duckModelRef.current, true);
       if (intersects.length > 0) {
         onDuckClick();
@@ -189,10 +243,10 @@ const MetalDuckScene: React.FC = () => {
     
     // Handle window resize
     const handleResize = () => {
-      if (!currentMount) return;
-      camera.aspect = currentMount.clientWidth / currentMount.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(currentMount.clientWidth, currentMount.clientHeight);
+      if (!currentMount || !rendererRef.current || !cameraRef.current) return;
+      cameraRef.current.aspect = currentMount.clientWidth / currentMount.clientHeight;
+      cameraRef.current.updateProjectionMatrix();
+      rendererRef.current.setSize(currentMount.clientWidth, currentMount.clientHeight);
     };
     window.addEventListener('resize', handleResize);
 
@@ -204,15 +258,14 @@ const MetalDuckScene: React.FC = () => {
         mixerRef.current.update(delta);
       }
       if (isAnimatingGuitar && duckModelRef.current) {
-        // Simple programmatic animation: slight rotation
         const time = animationClock.current.elapsedTime;
-        duckModelRef.current.rotation.y = Math.sin(time * 10) * 0.2; // Quick shake
+        duckModelRef.current.rotation.y = Math.sin(time * 10) * 0.2; 
       } else if (duckModelRef.current && !isAnimatingGuitar && !guitarAnimActionRef.current?.isRunning()) {
-         // Reset rotation if programmatic animation finished
          if (duckModelRef.current.rotation.y !== 0) duckModelRef.current.rotation.y = 0;
       }
-      // controls?.update(); // If using OrbitControls
-      renderer.render(scene, camera);
+      if (rendererRef.current && sceneRef.current && cameraRef.current) {
+        rendererRef.current.render(sceneRef.current, cameraRef.current);
+      }
     };
     animate();
 
@@ -227,15 +280,44 @@ const MetalDuckScene: React.FC = () => {
       sceneRef.current?.traverse(object => {
         if (object instanceof THREE.Mesh) {
           object.geometry?.dispose();
-          (object.material as THREE.Material)?.dispose();
+          if (object.material instanceof THREE.Material) {
+            object.material.dispose();
+          } else if (Array.isArray(object.material)) {
+            object.material.forEach(material => material.dispose());
+          }
         }
       });
       cuackSoundRef.current?.dispose();
       guitarSoundRef.current?.dispose();
+      console.log("MetalDuckScene cleaned up.");
     };
-  }, [onDuckClick, isAnimatingGuitar]); // Added isAnimatingGuitar to dependencies
+  }, [onDuckClick, isAnimatingGuitar]);
 
-  return <div ref={mountRef} className="w-full h-full" />;
+  return (
+    <div ref={mountRef} className="w-full h-full relative">
+      {isLoading && loadingMessage && (
+        <div 
+          style={{ 
+            position: 'absolute', 
+            top: '50%', 
+            left: '50%', 
+            transform: 'translate(-50%, -50%)', 
+            color: '#333', 
+            backgroundColor: 'rgba(255, 255, 255, 0.8)', 
+            padding: '10px 20px', 
+            borderRadius: '8px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+            zIndex: 10 
+          }}
+          aria-live="polite"
+        >
+          {loadingMessage}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default MetalDuckScene;
+
+    
