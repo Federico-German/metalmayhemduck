@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -82,11 +83,18 @@ export default {
   				to: {
   					height: '0'
   				}
-  			}
+  			},
+        'guitar-play': {
+          '0%, 100%': { transform: 'rotate(0deg) scale(1)' },
+          '25%': { transform: 'rotate(-5deg) scale(1.02)' },
+          '50%': { transform: 'rotate(0deg) scale(1)' },
+          '75%': { transform: 'rotate(5deg) scale(1.02)' },
+        }
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out'
+  			'accordion-up': 'accordion-up 0.2s ease-out',
+        'guitar-play': 'guitar-play 0.5s ease-in-out',
   		}
   	}
   },
