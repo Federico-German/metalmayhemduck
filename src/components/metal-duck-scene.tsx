@@ -29,18 +29,18 @@ const DuckModel = ({ onClick, isPlaying }: { onClick: () => void, isPlaying: boo
   }, [obj, materials]);
 
   useEffect(() => {
-    if (group.current && obj) {
-      if (isPlaying) {
-        group.current.rotation.x = Math.PI * 0.1;
-        setTimeout(() => {
-          if (group.current) {
-            group.current.rotation.x = 0;
-          }
-        }, 200);
-      } else {
-        if (group.current) group.current.rotation.x = 0;
-      }
-    }
+    // if (group.current && obj) {
+    //   if (isPlaying) {
+    //     group.current.rotation.x = Math.PI * 0.1;
+    //     setTimeout(() => {
+    //       if (group.current) {
+    //         group.current.rotation.x = 0;
+    //       }
+    //     }, 200);
+    //   } else {
+    //     if (group.current) group.current.rotation.x = 0;
+    //   }
+    // }
   }, [isPlaying, obj]);
 
   if (!obj) {
@@ -92,70 +92,108 @@ const GuitarModel = () => {
 
 const MetalDuckScene: React.FC = () => {
   const cuackSoundRef = useRef<Tone.Player | null>(null);
+  const guitarSoundRef = useRef<Tone.Player | null>(null);
   
   const [clickCount, setClickCount] = useState(0);
   const [isGuitarPlayingAnim, setIsGuitarPlayingAnim] = useState(false);
+  const [isGuitarActive, setIsGuitarActive] = useState(false);
   
   const { toast } = useToast();
 
   useEffect(() => {
     console.log("Attempting to initialize Tone.js sounds...");
-    try {
-      if (!cuackSoundRef.current) {
-        cuackSoundRef.current = new Tone.Player({
-          url: "/assets/sounds/duck-quack.mp3",
-          autostart: false,
-        }).toDestination();
-        console.log("Duck quack player initialized.");
-        Tone.loaded().then(() => {
-          console.log("Duck quack MP3 loaded and ready.");
-        }).catch(error => {
-          console.error("Error loading duck quack MP3:", error);
-          toast({ variant: "destructive", title: "Audio Load Error", description: "Could not load duck sound."});
+    let playerDisposed = false;
+
+    const initAudio = async () => {
+      try {
+        if (!cuackSoundRef.current) {
+          cuackSoundRef.current = new Tone.Player({
+            url: "/assets/sounds/duck-quack.mp3",
+            autostart: false,
+          }).toDestination();
+          console.log("Duck quack player initialized.");
+        }
+
+        if (!guitarSoundRef.current) {
+          guitarSoundRef.current = new Tone.Player({
+            url: "/assets/sounds/guitar.mp3",
+            autostart: false,
+          }).toDestination();
+          console.log("Guitar sound player initialized.");
+        }
+
+        await Tone.loaded();
+        if (playerDisposed) return; 
+        console.log("All sounds loaded and ready.");
+
+        if (Tone.context.state !== 'running') {
+          try {
+            Tone.start(); 
+            console.log("Attempted to start Tone.js audio context after sounds loaded.");
+          } catch (e) {
+            console.warn("Could not auto-start audio context after load:", e);
+          }
+        }
+      } catch (error) {
+        if (playerDisposed) return;
+        console.error("Error initializing Tone.js players or loading sounds:", error);
+        toast({
+          variant: "destructive",
+          title: "Audio Initialization Error",
+          description: "Could not create audio players or load sounds. Please check the console.",
         });
       }
-    } catch (error) {
-      console.error("Error initializing Tone.js sounds:", error);
-      toast({
-        variant: "destructive",
-        title: "Audio Initialization Error",
-        description: "Could not create audio players/synthesizers. Please check the console.",
-      });
-    }
+    };
+
+    initAudio();
 
     return () => {
+      playerDisposed = true;
       cuackSoundRef.current?.dispose();
-      console.log("Tone.js players/synths disposed.");
+      guitarSoundRef.current?.dispose();
+      console.log("Tone.js players disposed.");
     };
   }, [toast]);
 
   const onDuckClick = useCallback(async () => {
-    if (Tone.context.state !== 'running') {
-      try {
+    try {
+      if (Tone.context.state !== 'running') {
         await Tone.start();
-        console.log("Tone.js audio context started.");
-      } catch (e) {
-        console.error("Error starting Tone.js audio context:", e);
-        toast({ variant: "destructive", title: "Audio Error", description: "Could not start audio engine. Please check console."});
-        return;
+        console.log("Tone.js audio context started on click.");
       }
+
+      const newClickCount = clickCount + 1;
+      setClickCount(newClickCount);
+
+      const shouldBeGuitarActive = newClickCount > 0 && newClickCount % 5 === 0;
+      setIsGuitarActive(shouldBeGuitarActive);
+
+      const clickTime = Tone.now();
+
+      if (shouldBeGuitarActive) {
+        if (guitarSoundRef.current && guitarSoundRef.current.loaded) {
+          guitarSoundRef.current.start(clickTime);
+        } else {
+          console.warn("Guitar sound player not ready or sound not loaded yet.");
+          toast({ variant: "destructive", title: "Sound Error", description: "Guitar sound not available."});
+        }
+      } else {
+        if (cuackSoundRef.current && cuackSoundRef.current.loaded) {
+          cuackSoundRef.current.start(clickTime);
+        } else {
+          console.warn("Duck quack player not ready or sound not loaded yet.");
+          toast({ variant: "destructive", title: "Sound Error", description: "Duck sound not available."});
+        }
+      }
+      
+      setIsGuitarPlayingAnim(true);
+      setTimeout(() => setIsGuitarPlayingAnim(false), 500); 
+
+    } catch (e) {
+      console.error("Error in onDuckClick (starting context or playing sound):", e);
+      toast({ variant: "destructive", title: "Audio Playback Error", description: "Could not play sound. Please check console."});
     }
-
-    const clickTime = Tone.now();
-
-    // Play Duck Quack MP3
-    if (cuackSoundRef.current && cuackSoundRef.current.loaded) {
-      cuackSoundRef.current.start(clickTime);
-    } else {
-      console.warn("Duck quack player not ready or failed to initialize/load.");
-      toast({ variant: "destructive", title: "Sound Error", description: "Duck sound not available or not loaded."});
-    }
-    
-    setIsGuitarPlayingAnim(true);
-    setTimeout(() => setIsGuitarPlayingAnim(false), 500); 
-
-    setClickCount(prevCount => prevCount + 1);
-  }, [toast]);
+  }, [clickCount, toast]);
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center relative select-none p-4">
@@ -166,7 +204,7 @@ const MetalDuckScene: React.FC = () => {
             <directionalLight position={[10, 10, 5]} intensity={10.5} />
             <pointLight position={[-10, -10, -10]} intensity={1.7} />
             <DuckModel onClick={onDuckClick} isPlaying={isGuitarPlayingAnim} />
-            <GuitarModel />
+            {isGuitarActive && <GuitarModel />}
             <Environment preset="city" />
             <OrbitControls enableZoom={true} />
           </Suspense>
