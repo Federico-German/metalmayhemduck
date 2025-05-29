@@ -60,6 +60,36 @@ const DuckModel = ({ onClick, isPlaying }: { onClick: () => void, isPlaying: boo
   );
 };
 
+const GuitarModel = () => {
+  const group = useRef<THREE.Group>(null);
+  const guitarMtl = useLoader(MTLLoader, '/assets/models/guitar/talor 514ce.mtl');
+  const guitarObj = useLoader(OBJLoader, '/assets/models/guitar/talor 514ce.obj', (loader) => {
+    guitarMtl.preload();
+    loader.setMaterials(guitarMtl);
+  });
+
+  useEffect(() => {
+    if (guitarObj && group.current) {
+      console.log("Guitar OBJ loaded with MTL materials.");
+    }
+  }, [guitarObj, guitarMtl]);
+
+  if (!guitarObj) {
+    return <mesh position={[0,0,1]}><boxGeometry args={[0.2,0.2,0.2]}/><meshBasicMaterial color="red" /></mesh>;
+  }
+
+  return (
+    guitarObj ? (
+      <group ref={group} position={[-2.25, -0.45, 1]} rotation={[0, -Math.PI / 2, 0]}>
+        <primitive 
+          object={guitarObj} 
+          scale={0.12}
+        />
+      </group>
+    ) : null
+  );
+};
+
 const MetalDuckScene: React.FC = () => {
   const cuackSoundRef = useRef<Tone.Player | null>(null);
   
@@ -136,6 +166,7 @@ const MetalDuckScene: React.FC = () => {
             <directionalLight position={[10, 10, 5]} intensity={10.5} />
             <pointLight position={[-10, -10, -10]} intensity={1.7} />
             <DuckModel onClick={onDuckClick} isPlaying={isGuitarPlayingAnim} />
+            <GuitarModel />
             <Environment preset="city" />
             <OrbitControls enableZoom={true} />
           </Suspense>
