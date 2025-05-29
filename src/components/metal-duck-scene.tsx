@@ -7,6 +7,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import * as Tone from 'tone';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'; // Optional: for dev camera control
+import { useToast } from '@/hooks/use-toast';
 
 // NOTE: Please create these directories and add your assets:
 // - public/assets/models/duck.glb (Your 3D duck model)
@@ -32,32 +33,65 @@ const MetalDuckScene: React.FC = () => {
   const animationClock = useRef(new THREE.Clock());
 
   const placeholderCubeRef = useRef<THREE.Mesh | null>(null);
+  const { toast } = useToast();
 
   // Initialize Tone.js and audio players
   useEffect(() => {
     setLoadingMessage("Loading sounds...");
-    cuackSoundRef.current = new Tone.Player();
-    guitarSoundRef.current = new Tone.Player();
+    // Ensure Tone.Player is created only once or properly managed
+    if (!cuackSoundRef.current) {
+      cuackSoundRef.current = new Tone.Player();
+    }
+    if (!guitarSoundRef.current) {
+      guitarSoundRef.current = new Tone.Player();
+    }
 
     Promise.all([
       cuackSoundRef.current.load("/assets/sounds/cuack.mp3")
-        .then(() => console.log("Cuack sound loaded successfully from /public/assets/sounds/cuack.mp3"))
-        .catch(err => console.error("Error loading cuack.mp3. Ensure /public/assets/sounds/cuack.mp3 exists.", err)),
+        .then(() => console.log("Cuack sound loaded successfully. Ensure it's at /public/assets/sounds/cuack.mp3"))
+        .catch(err => {
+          const errorMsg = "Error loading cuack.mp3. Ensure file exists at /public/assets/sounds/cuack.mp3";
+          console.error(errorMsg, err);
+          toast({
+            variant: "destructive",
+            title: "Sound Loading Error",
+            description: "Could not load cuack.mp3. Check console & path: public/assets/sounds/cuack.mp3",
+          });
+        }),
       guitarSoundRef.current.load("/assets/sounds/guitar_riff.mp3")
-        .then(() => console.log("Guitar riff sound loaded successfully from /public/assets/sounds/guitar_riff.mp3"))
-        .catch(err => console.error("Error loading guitar_riff.mp3. Ensure /public/assets/sounds/guitar_riff.mp3 exists.", err))
+        .then(() => console.log("Guitar riff sound loaded successfully. Ensure it's at /public/assets/sounds/guitar_riff.mp3"))
+        .catch(err => {
+          const errorMsg = "Error loading guitar_riff.mp3. Ensure file exists at /public/assets/sounds/guitar_riff.mp3";
+          console.error(errorMsg, err);
+          toast({
+            variant: "destructive",
+            title: "Sound LoadingError",
+            description: "Could not load guitar_riff.mp3. Check console & path: public/assets/sounds/guitar_riff.mp3",
+          });
+        })
     ])
     .then(() => {
       console.log("All sounds preloading attempted.");
       cuackSoundRef.current?.toDestination();
       guitarSoundRef.current?.toDestination();
     })
-    .catch(err => console.error("Error during sound preloading setup:", err));
-  }, []);
+    .catch(err => {
+      console.error("Error during sound preloading setup:", err);
+      toast({
+        variant: "destructive",
+        title: "Sound Setup Error",
+        description: "An unexpected error occurred while setting up sounds.",
+      });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]); // Added toast to dependencies, though it's stable
 
   const onDuckClick = useCallback(async () => {
     if (isLoading || !duckModelRef.current || placeholderCubeRef.current) {
       console.warn('Duck model not fully loaded or placeholder is active, click action aborted.');
+      if(!duckModelRef.current && !placeholderCubeRef.current){
+        toast({ title: "Hold on!", description: "Duck model is still loading." });
+      }
       return;
     }
 
@@ -68,6 +102,7 @@ const MetalDuckScene: React.FC = () => {
         console.log("Tone.js audio context started.");
       } catch (e) {
         console.error("Error starting Tone.js audio context:", e);
+        toast({ variant: "destructive", title: "Audio Error", description: "Could not start audio engine."});
         return;
       }
     }
@@ -77,6 +112,8 @@ const MetalDuckScene: React.FC = () => {
       cuackSoundRef.current?.stop().start();
     } else {
       console.warn("Cuack sound not loaded, cannot play.");
+      // Optionally, provide feedback if sound isn't ready
+      // toast({ title: "Sound Note", description: "Quack sound is not ready yet."});
     }
     if (guitarSoundRef.current?.loaded) {
       guitarSoundRef.current?.stop().start();
@@ -90,10 +127,9 @@ const MetalDuckScene: React.FC = () => {
       console.log("Playing GLTF animation.");
       guitarAnimActionRef.current.reset().play();
     } else {
-      // Fallback programmatic animation
       console.log("Playing fallback programmatic animation.");
       setIsAnimatingGuitar(true);
-      setTimeout(() => setIsAnimatingGuitar(false), 500); // Animate for 0.5 seconds
+      setTimeout(() => setIsAnimatingGuitar(false), 500); 
     }
 
     setClickCount(prevCount => {
@@ -101,7 +137,7 @@ const MetalDuckScene: React.FC = () => {
       console.log(`Duck clicked ${newCount} times`);
       return newCount;
     });
-  }, [isLoading]);
+  }, [isLoading, toast]);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -110,16 +146,12 @@ const MetalDuckScene: React.FC = () => {
     setIsLoading(true);
     setLoadingMessage("Initializing 3D scene...");
 
-    // Scene
+    // Scene, Camera, Renderer setup (no changes here from previous version)
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-
-    // Camera
     const camera = new THREE.PerspectiveCamera(50, currentMount.clientWidth / currentMount.clientHeight, 0.1, 1000);
     camera.position.set(0, 1.5, 4); 
     cameraRef.current = camera;
-
-    // Renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(currentMount.clientWidth, currentMount.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
@@ -191,9 +223,8 @@ const MetalDuckScene: React.FC = () => {
         setIsLoading(false);
         setLoadingMessage(""); 
       },
-      (xhr) => { // onProgress callback
+      (xhr) => { 
         const percentLoaded = (xhr.loaded / xhr.total) * 100;
-        // console.log(`Model loading progress: ${percentLoaded.toFixed(2)}%`);
         if (percentLoaded < 100) {
           setLoadingMessage(`Loading 3D model: ${percentLoaded.toFixed(0)}%`);
         } else {
@@ -201,17 +232,22 @@ const MetalDuckScene: React.FC = () => {
         }
       },
       (error) => {
-        console.error('Error loading duck model. Please ensure /public/assets/models/duck.glb exists and is a valid GLB file. Check browser console for more details.', error);
+        console.error('Error loading duck model. Please ensure /public/assets/models/duck.glb exists and is a valid GLB file.', error);
         setLoadingMessage("Error loading model. Showing placeholder.");
-        // Add a placeholder cube if model fails to load
+        toast({
+          variant: "destructive",
+          title: "3D Model Error",
+          description: "Could not load duck.glb. Check console & path: public/assets/models/duck.glb",
+        });
+        
         const geometry = new THREE.BoxGeometry(1, 1, 1);
-        const material = new THREE.MeshStandardMaterial({ color: 0xffcc00 }); // Yellow cube
+        const material = new THREE.MeshStandardMaterial({ color: 0xffcc00 });
         const cube = new THREE.Mesh(geometry, material);
         cube.position.set(0,0.5,0);
         scene.add(cube);
         placeholderCubeRef.current = cube;
         camera.lookAt(cube.position);
-        setIsLoading(false); // Still set loading to false to remove general loading message
+        setIsLoading(false); 
       }
     );
 
@@ -221,19 +257,14 @@ const MetalDuckScene: React.FC = () => {
 
     const handleCanvasClick = (event: MouseEvent) => {
       if (!currentMount || !cameraRef.current || !sceneRef.current || isLoading) return;
-
-      // Only proceed if the actual duck model is loaded, not the placeholder
       if (!duckModelRef.current || placeholderCubeRef.current) {
-        console.log("Actual duck model not loaded or placeholder is active, click on canvas ignored for duck interaction.");
+        console.log("Actual duck model not loaded or placeholder is active, canvas click ignored for duck interaction.");
         return;
       }
-
       const rect = currentMount.getBoundingClientRect();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(mouse, cameraRef.current);
-      
-      // Check intersection with the actual duck model
       const intersects = raycaster.intersectObject(duckModelRef.current, true);
       if (intersects.length > 0) {
         onDuckClick();
@@ -272,9 +303,11 @@ const MetalDuckScene: React.FC = () => {
     // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize);
-      currentMount.removeEventListener('click', handleCanvasClick);
-      if (rendererRef.current && rendererRef.current.domElement.parentNode === currentMount) {
-         currentMount.removeChild(rendererRef.current.domElement);
+      if (currentMount) { // Check if currentMount is still valid
+        currentMount.removeEventListener('click', handleCanvasClick);
+        if (rendererRef.current && rendererRef.current.domElement.parentNode === currentMount) {
+           currentMount.removeChild(rendererRef.current.domElement);
+        }
       }
       rendererRef.current?.dispose();
       sceneRef.current?.traverse(object => {
@@ -287,11 +320,15 @@ const MetalDuckScene: React.FC = () => {
           }
         }
       });
+      // Dispose Tone.Players correctly
       cuackSoundRef.current?.dispose();
       guitarSoundRef.current?.dispose();
+      // Set refs to null after disposing if necessary, or manage re-creation
+      // cuackSoundRef.current = null; 
+      // guitarSoundRef.current = null;
       console.log("MetalDuckScene cleaned up.");
     };
-  }, [onDuckClick, isAnimatingGuitar]);
+  }, [onDuckClick, isAnimatingGuitar, toast]); // Added toast to dependency array
 
   return (
     <div ref={mountRef} className="w-full h-full relative">
@@ -302,10 +339,10 @@ const MetalDuckScene: React.FC = () => {
             top: '50%', 
             left: '50%', 
             transform: 'translate(-50%, -50%)', 
-            color: '#333', 
-            backgroundColor: 'rgba(255, 255, 255, 0.8)', 
+            color: 'hsl(var(--foreground))', 
+            backgroundColor: 'hsla(var(--background), 0.8)', 
             padding: '10px 20px', 
-            borderRadius: '8px',
+            borderRadius: 'var(--radius)',
             boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
             zIndex: 10 
           }}
@@ -319,5 +356,3 @@ const MetalDuckScene: React.FC = () => {
 };
 
 export default MetalDuckScene;
-
-    
