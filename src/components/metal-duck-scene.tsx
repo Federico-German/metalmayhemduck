@@ -61,8 +61,7 @@ const DuckModel = ({ onClick, isPlaying }: { onClick: () => void, isPlaying: boo
 };
 
 const MetalDuckScene: React.FC = () => {
-  const cuackSoundRef = useRef<Tone.Synth | null>(null);
-  const guitarSoundRef = useRef<Tone.PluckSynth | null>(null);
+  const cuackSoundRef = useRef<Tone.Player | null>(null);
   
   const [clickCount, setClickCount] = useState(0);
   const [isGuitarPlayingAnim, setIsGuitarPlayingAnim] = useState(false);
@@ -70,36 +69,33 @@ const MetalDuckScene: React.FC = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    console.log("Attempting to initialize Tone.js synths...");
+    console.log("Attempting to initialize Tone.js sounds...");
     try {
       if (!cuackSoundRef.current) {
-        cuackSoundRef.current = new Tone.Synth({
-          oscillator: { type: 'square' },
-          envelope: { attack: 0.005, decay: 0.1, sustain: 0.05, release: 0.1 },
+        cuackSoundRef.current = new Tone.Player({
+          url: "/assets/sounds/duck-quack.mp3",
+          autostart: false,
         }).toDestination();
-        console.log("Cuack synth initialized.");
-      }
-      if (!guitarSoundRef.current) {
-        guitarSoundRef.current = new Tone.PluckSynth({
-          attackNoise: 1,
-          dampening: 4000,
-          resonance: 0.7
-        }).toDestination();
-        console.log("Guitar synth initialized.");
+        console.log("Duck quack player initialized.");
+        Tone.loaded().then(() => {
+          console.log("Duck quack MP3 loaded and ready.");
+        }).catch(error => {
+          console.error("Error loading duck quack MP3:", error);
+          toast({ variant: "destructive", title: "Audio Load Error", description: "Could not load duck sound."});
+        });
       }
     } catch (error) {
-      console.error("Error initializing Tone.js synths:", error);
+      console.error("Error initializing Tone.js sounds:", error);
       toast({
         variant: "destructive",
         title: "Audio Initialization Error",
-        description: "Could not create sound synthesizers. Please check the console.",
+        description: "Could not create audio players/synthesizers. Please check the console.",
       });
     }
 
     return () => {
       cuackSoundRef.current?.dispose();
-      guitarSoundRef.current?.dispose();
-      console.log("Tone.js synths disposed.");
+      console.log("Tone.js players/synths disposed.");
     };
   }, [toast]);
 
@@ -115,20 +111,14 @@ const MetalDuckScene: React.FC = () => {
       }
     }
 
-    if (cuackSoundRef.current) {
-      cuackSoundRef.current.triggerAttackRelease("C5", "16n", Tone.now());
+    const clickTime = Tone.now();
+
+    // Play Duck Quack MP3
+    if (cuackSoundRef.current && cuackSoundRef.current.loaded) {
+      cuackSoundRef.current.start(clickTime);
     } else {
-      console.warn("Cuack synth not ready or failed to initialize.");
-      toast({ variant: "destructive", title: "Sound Error", description: "Cuack sound not available."});
-    }
-    if (guitarSoundRef.current) {
-      const now = Tone.now();
-      guitarSoundRef.current.triggerAttackRelease("E2", "8n", now);
-      guitarSoundRef.current.triggerAttackRelease("A2", "8n", now + 0.25);
-      guitarSoundRef.current.triggerAttackRelease("D3", "8n", now + 0.5);
-    } else {
-      console.warn("Guitar synth not ready or failed to initialize.");
-      toast({ variant: "destructive", title: "Sound Error", description: "Guitar sound not available."});
+      console.warn("Duck quack player not ready or failed to initialize/load.");
+      toast({ variant: "destructive", title: "Sound Error", description: "Duck sound not available or not loaded."});
     }
     
     setIsGuitarPlayingAnim(true);
@@ -142,9 +132,9 @@ const MetalDuckScene: React.FC = () => {
       <div className="w-full h-full">
         <Canvas camera={{ position: [0, 1, 10], fov: 50 }}>
           <Suspense fallback={null}>
-            <ambientLight intensity={0.8} />
-            <directionalLight position={[10, 10, 5]} intensity={1.0} />
-            <pointLight position={[-10, -10, -10]} intensity={0.5} />
+            <ambientLight intensity={1.2} />
+            <directionalLight position={[10, 10, 5]} intensity={10.5} />
+            <pointLight position={[-10, -10, -10]} intensity={1.7} />
             <DuckModel onClick={onDuckClick} isPlaying={isGuitarPlayingAnim} />
             <Environment preset="city" />
             <OrbitControls enableZoom={true} />
